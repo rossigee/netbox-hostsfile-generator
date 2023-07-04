@@ -12,8 +12,9 @@ import (
 )
 
 type IPRecord struct {
-	Address string `json:"address"`
-	DNSName string `json:"dns_name"`
+	Address     string `json:"address"`
+	DNSName     string `json:"dns_name"`
+	Description string `json:"description"`
 }
 
 type NetboxResponse struct {
@@ -55,11 +56,11 @@ func main() {
 	fmt.Printf("Hosts file created: %s\n", outputFile)
 }
 
-func fetchIPRecords(netboxURL, netboxToken string) (map[string][]string, error) {
+func fetchIPRecords(netboxURL, netboxToken string) (map[string]IPRecord, error) {
 	client := resty.New()
 	url := netboxURL + defaultPath
 
-	ipRecords := make(map[string][]string)
+	ipRecords := make(map[string]IPRecord)
 
 	for {
 		response, err := client.R().
@@ -77,7 +78,7 @@ func fetchIPRecords(netboxURL, netboxToken string) (map[string][]string, error) 
 
 		// Process IP records in the current page
 		for _, record := range netboxResponse.Results {
-			ipRecords[record.Address] = append(ipRecords[record.Address], record.DNSName)
+			ipRecords[record.Address] = record
 		}
 
 		// Check if there are more pages
@@ -92,13 +93,20 @@ func fetchIPRecords(netboxURL, netboxToken string) (map[string][]string, error) 
 	return ipRecords, nil
 }
 
-func generateHostsContent(ipRecords map[string][]string) string {
+func generateHostsContent(ipRecords map[string]IPRecord) string {
 	hostsContent := ""
 
-	for ip, dnsNames := range ipRecords {
+	for ip, record := range ipRecords {
+		if record.DNSName == "" {
+			continue // Skip if DNS name is empty
+		}
+
 		ipWithoutSubnet := strings.Split(ip, "/")[0]
-		names := strings.Join(dnsNames, " ")
-		hostsContent += fmt.Sprintf("%s\t%s\n", ipWithoutSubnet, names)
+		comment := ""
+		if record.Description != "" {
+			comment = fmt.Sprintf("# %s", record.Description)
+		}
+		hostsContent += fmt.Sprintf("%s\t%s\t%s\n", ipWithoutSubnet, record.DNSName, comment)
 	}
 
 	return hostsContent
